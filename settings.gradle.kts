@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WudCompressAndroid"
+rootProject.name = "WudCompressMobile"
 include(":app")

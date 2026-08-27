@@ -1,59 +1,61 @@
-# WudCompress Android — Java puro
+# WudCompressMobile
 
-Reimplementação Android do algoritmo WUD ⇄ WUX do **WudCompress v1.0 (Exzap)**.
+**Criador da versão mobile: Halleyplaybr**
 
-## O que mudou
+WudCompressMobile é uma versão Android para conversão **WUD ⇄ WUX**, criada a partir do estudo e uso do código-fonte do **WudCompress v1.0 original, de Exzap**.
 
-- O núcleo foi reescrito em **Java puro**: não usa C++, JNI, CMake nem Android NDK.
-- Mantém o formato **WUX0** original:
-  - cabeçalho de 32 bytes em little-endian;
-  - setor padrão de `0x8000` bytes;
-  - tabela de índices `uint32`;
-  - setor de dados alinhado ao tamanho do setor.
-- Compacta WUD → WUX.
-- Descompacta WUX → WUD.
-- Faz verificação byte a byte opcional ao final.
-- Usa `ACTION_OPEN_DOCUMENT`/`ACTION_CREATE_DOCUMENT`, então não pede acesso total ao armazenamento.
-- Usa `android.system.Os.pread/pwrite` para acesso aleatório a arquivos grandes.
+A versão mobile foi desenvolvida por **Halleyplaybr com assistência de IA**. O núcleo foi adaptado/reimplementado em Java para funcionar nativamente no Android, mantendo compatibilidade com o formato WUX0 do original.
 
-## Correção importante em relação ao original
+## v2.2 — WudCompressMobile
 
-O WudCompress v1.0 reutiliza um setor quando o hash simples de 32 bytes coincide, sem comparar o conteúdo real. Esse hash pode colidir. Nesta versão, quando o hash coincide, os bytes do setor armazenado também são comparados antes de reutilizar o índice. O arquivo continua sendo WUX0 compatível, mas evita uma classe de corrupção que o algoritmo original pode produzir em colisões artificiais.
+- Nome alterado para **WudCompressMobile**.
+- Ícone próprio do aplicativo.
+- Tema acompanha automaticamente o tema do dispositivo: claro ou escuro.
+- Correção de layout para respeitar barra de status, câmera frontal/cutout e barra de navegação.
+- Removido o texto explicativo que ficava solto no rodapé da tela.
+- Tela **Sobre** com autoria, origem do código e informação sobre assistência de IA.
+- Conversão em **Foreground Service**, continuando ao minimizar ou remover o app dos Recentes.
+- Notificação de progresso durante a conversão.
+- `PARTIAL_WAKE_LOCK` enquanto processa arquivos grandes.
+- Permissões persistentes de URI quando o provedor de arquivos Android oferece suporte.
 
-## Testes feitos nesta versão
+> Forçar parada do aplicativo pelas Configurações do Android encerra o serviço, como acontece com qualquer aplicativo Android. Alguns fabricantes também podem aplicar limites extras de bateria a tarefas longas.
 
-1. WUD → WUX → WUD com setores repetidos.
-2. Comparação byte por byte entre o WUD inicial e o WUD reconstruído.
-3. SHA-256 inicial/final idêntico.
-4. Leitura/descompactação de um WUX gerado pela lógica original do WudCompress.
-5. Teste do núcleo com `javac`/JVM sem Android.
+## Origem e créditos
 
-Resultado do teste principal:
+- **WudCompressMobile / versão mobile:** Halleyplaybr.
+- **Base técnica:** código-fonte do WudCompress v1.0 original, de Exzap.
+- **Desenvolvimento mobile:** criado com assistência de IA.
+- O formato WUX0 e a lógica de conversão foram estudados a partir do projeto original e adaptados para Android.
 
-- WUD inicial SHA-256: `910d6184085291beab1fc9fd6902cc6b28b20773858e99c7f408bb3c4c131864`
-- WUD reconstruído SHA-256: `910d6184085291beab1fc9fd6902cc6b28b20773858e99c7f408bb3c4c131864`
-- Resultado: **PASS**
+## Núcleo
 
-Teste de compatibilidade com WUX original:
+- Java puro no Android, sem JNI/CMake/NDK.
+- WUD → WUX.
+- WUX → WUD.
+- Formato WUX0 compatível.
+- Cabeçalho de 32 bytes em little-endian.
+- Setor padrão de `0x8000` bytes.
+- Tabela de índices `uint32`.
+- Verificação byte a byte opcional no final.
+- `ACTION_OPEN_DOCUMENT` / `ACTION_CREATE_DOCUMENT`, sem pedir acesso total ao armazenamento.
+- Acesso aleatório a arquivos grandes via `android.system.Os.pread/pwrite`.
 
-- WUD esperado SHA-256: `cc47fb32f503d1b52665a288dc3f35f463139ace9d535c9a886eddf67ccfaebd`
-- WUD produzido SHA-256: `cc47fb32f503d1b52665a288dc3f35f463139ace9d535c9a886eddf67ccfaebd`
-- Resultado: **COMPAT_PASS**
+## Correção adicional em relação ao algoritmo original
+
+O WudCompress v1.0 usa um hash simples para detectar setores repetidos. Nesta implementação, quando um hash coincide, os bytes do setor também são comparados antes de reutilizar o índice. Isso mantém o formato WUX0 e evita uma possível colisão de hash gerar saída incorreta.
+
+## Testes do núcleo
+
+- WUD → WUX → WUD.
+- Comparação byte por byte entre entrada e saída reconstruída.
+- SHA-256 inicial e final idênticos no teste principal.
+- Leitura de WUX produzido pela lógica original.
 
 ## Build
 
-O projeto usa Android Gradle Plugin 8.7.3, `compileSdk 35`, `minSdk 26` e não possui dependências AndroidX.
+Android Gradle Plugin 8.7.3, `compileSdk 35`, `minSdk 26`, `targetSdk 35`.
 
-### Android Studio
+O workflow `.github/workflows/build-apk.yml` gera o artifact:
 
-Abra a pasta do projeto, sincronize o Gradle e execute `assembleDebug`.
-
-### GitHub Actions
-
-O arquivo `.github/workflows/build-apk.yml` instala o SDK e gera automaticamente:
-
-`app/build/outputs/apk/debug/app-debug.apk`
-
-## Observação
-
-Alguns provedores de arquivos do Android não oferecem um descritor realmente seekable. Para WUD/WUX, prefira selecionar o arquivo no armazenamento local do aparelho/SD quando possível.
+`WudCompressMobile-debug`
