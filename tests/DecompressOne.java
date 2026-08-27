@@ -1,0 +1,6 @@
+import com.wudcompress.android.core.WudEngine;
+import java.io.*; import java.nio.*; import java.nio.channels.*;
+public class DecompressOne {
+ static class R implements WudEngine.RandomAccessFileLike, AutoCloseable { RandomAccessFile r; FileChannel c; boolean w; R(String p,String m)throws Exception{r=new RandomAccessFile(p,m);c=r.getChannel();w=m.contains("w");} public long size()throws IOException{return c.size();} public int read(long p,byte[]b,int o,int l)throws IOException{ByteBuffer x=ByteBuffer.wrap(b,o,l);int n=0;while(x.hasRemaining()){int q=c.read(x,p+n);if(q<0)return n==0?-1:n;if(q==0)break;n+=q;}return n;} public void write(long p,byte[]b,int o,int l)throws IOException{ByteBuffer x=ByteBuffer.wrap(b,o,l);int n=0;while(x.hasRemaining()){int q=c.write(x,p+n);if(q<=0)throw new IOException();n+=q;}} public void truncate(long n)throws IOException{c.truncate(n);} public void force()throws IOException{c.force(false);} public void close()throws IOException{r.close();}}
+ public static void main(String[]a)throws Exception{try(R in=new R(a[0],"r");R out=new R(a[1],"rw")){System.out.println("detect="+WudEngine.detect(in));System.out.println("result="+WudEngine.process(in,out,true,null));}}
+}
