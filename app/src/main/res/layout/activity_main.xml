@@ -1,21 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
-    android:background="#F4F6F8">
+    android:background="@color/background"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingLeft="20dp"
+        android:paddingTop="20dp"
+        android:paddingRight="20dp"
+        android:paddingBottom="20dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="WudCompress"
-            android:textColor="#15181C"
+            android:text="WudCompressMobile"
+            android:textColor="@color/text_primary"
             android:textSize="30sp"
             android:textStyle="bold" />
 
@@ -23,8 +28,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"
-            android:text="WUD ⇄ WUX • Android nativo"
-            android:textColor="#626A73"
+            android:text="WUD ⇄ WUX • Android"
+            android:textColor="@color/text_secondary"
             android:textSize="15sp" />
 
         <LinearLayout
@@ -49,7 +54,7 @@
                 android:ellipsize="middle"
                 android:maxLines="2"
                 android:text="Nenhum arquivo selecionado"
-                android:textColor="#343A40"
+                android:textColor="@color/text_secondary"
                 android:textSize="15sp" />
 
             <TextView
@@ -58,7 +63,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="Modo: —"
-                android:textColor="#15181C"
+                android:textColor="@color/text_primary"
                 android:textSize="17sp"
                 android:textStyle="bold" />
 
@@ -68,7 +73,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:checked="true"
-                android:text="Verificar resultado no final" />
+                android:text="Verificar resultado no final"
+                android:textColor="@color/text_primary" />
 
             <Button
                 android:id="@+id/startButton"
@@ -92,7 +98,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Pronto"
-                android:textColor="#343A40"
+                android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 
             <ProgressBar
@@ -110,7 +116,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="0.0%"
-                android:textColor="#15181C"
+                android:textColor="@color/text_primary"
                 android:textSize="20sp"
                 android:textStyle="bold" />
 
@@ -120,16 +126,15 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="Selecione uma imagem Wii U."
-                android:textColor="#626A73"
+                android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <TextView
+        <Button
+            android:id="@+id/aboutButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Compatível com o formato WUX0 usado pelo WudCompress v1.0. O processamento é feito em Java puro, sem NDK/JNI."
-            android:textColor="#777F88"
-            android:textSize="12sp" />
+            android:layout_marginTop="16dp"
+            android:text="Sobre o WudCompressMobile" />
     </LinearLayout>
 </ScrollView>
