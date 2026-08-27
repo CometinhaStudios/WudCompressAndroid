@@ -1,14 +1,21 @@
 package com.wudcompress.android;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.ParcelFileDescriptor;
+import android.content.res.Configuration;
+import android.view.View;
+import android.view.WindowInsets;
 import android.provider.OpenableColumns;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.Switch;
@@ -18,15 +25,15 @@ import android.widget.Toast;
 import com.wudcompress.android.core.WudEngine;
 
 import java.util.Locale;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int REQ_INPUT = 1001;
     private static final int REQ_OUTPUT = 1002;
+    private static final int REQ_NOTIFICATIONS = 1003;
 
     private Button selectInputButton;
     private Button startButton;
+    private Button aboutButton;
     private TextView inputNameText;
     private TextView modeText;
     private Switch verifySwitch;
@@ -39,9 +46,21 @@ public final class MainActivity extends Activity {
     private String inputName = "game.wud";
     private int detectedMode = -1;
     private boolean running;
+    private boolean receiverRegistered;
 
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!WudProcessService.ACTION_STATE.equals(intent.getAction())) return;
+            applyServiceState(
+                    intent.getBooleanExtra(WudProcessService.EXTRA_RUNNING, false),
+                    intent.getIntExtra(WudProcessService.EXTRA_PROGRESS, 0),
+                    intent.getStringExtra(WudProcessService.EXTRA_STAGE),
+                    intent.getIntExtra(WudProcessService.EXTRA_RESULT, WudProcessService.RESULT_NONE),
+                    intent.getBooleanExtra(WudProcessService.EXTRA_VERIFY, true),
+                    true);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,6 +69,7 @@ public final class MainActivity extends Activity {
 
         selectInputButton = findViewById(R.id.selectInputButton);
         startButton = findViewById(R.id.startButton);
+        aboutButton = findViewById(R.id.aboutButton);
         inputNameText = findViewById(R.id.inputNameText);
         modeText = findViewById(R.id.modeText);
         verifySwitch = findViewById(R.id.verifySwitch);
@@ -60,6 +80,84 @@ public final class MainActivity extends Activity {
 
         selectInputButton.setOnClickListener(v -> chooseInput());
         startButton.setOnClickListener(v -> chooseOutput());
+        aboutButton.setOnClickListener(v -> showAbout());
+
+        configureSystemBarsAndInsets();
+
+        WudProcessService.Snapshot snapshot = WudProcessService.snapshot();
+        applyServiceState(snapshot.running, snapshot.progress, snapshot.stage, snapshot.result, snapshot.verify, false);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        registerStateReceiver();
+        WudProcessService.Snapshot snapshot = WudProcessService.snapshot();
+        applyServiceState(snapshot.running, snapshot.progress, snapshot.stage, snapshot.result, snapshot.verify, false);
+    }
+
+    @Override
+    protected void onStop() {
+        if (receiverRegistered) {
+            unregisterReceiver(stateReceiver);
+            receiverRegistered = false;
+        }
+        super.onStop();
+    }
+
+    private void registerStateReceiver() {
+        if (receiverRegistered) return;
+        IntentFilter filter = new IntentFilter(WudProcessService.ACTION_STATE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(stateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(stateReceiver, filter);
+        }
+        receiverRegistered = true;
+    }
+
+    private void configureSystemBarsAndInsets() {
+        final View root = findViewById(R.id.rootScroll);
+        final int baseLeft = root.getPaddingLeft();
+        final int baseTop = root.getPaddingTop();
+        final int baseRight = root.getPaddingRight();
+        final int baseBottom = root.getPaddingBottom();
+
+        root.setOnApplyWindowInsetsListener((view, windowInsets) -> {
+            // These APIs exist on every Android version supported by this app
+            // and include the safe area used by status/navigation bars.
+            int left = windowInsets.getSystemWindowInsetLeft();
+            int top = windowInsets.getSystemWindowInsetTop();
+            int right = windowInsets.getSystemWindowInsetRight();
+            int bottom = windowInsets.getSystemWindowInsetBottom();
+            view.setPadding(
+                    baseLeft + left,
+                    baseTop + top,
+                    baseRight + right,
+                    baseBottom + bottom);
+            return windowInsets;
+        });
+        root.requestApplyInsets();
+
+        boolean dark = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        int flags = getWindow().getDecorView().getSystemUiVisibility();
+        if (dark) {
+            flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        } else {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        }
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+    }
+
+    private void showAbout() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.about_title)
+                .setMessage(R.string.about_text)
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void chooseInput() {
@@ -78,7 +176,10 @@ public final class MainActivity extends Activity {
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/octet-stream");
         intent.putExtra(Intent.EXTRA_TITLE, oppositeExtension(inputName, extension));
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        intent.addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(intent, REQ_OUTPUT);
     }
 
@@ -91,6 +192,7 @@ public final class MainActivity extends Activity {
         if (requestCode == REQ_INPUT) {
             loadInput(uri);
         } else if (requestCode == REQ_OUTPUT) {
+            persistOutputPermission(uri);
             startProcessing(uri);
         }
     }
@@ -138,68 +240,71 @@ public final class MainActivity extends Activity {
         startButton.setEnabled(true);
     }
 
+    private void persistOutputPermission(Uri uri) {
+        try {
+            getContentResolver().takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        } catch (Exception ignored) {
+        }
+    }
+
     private void startProcessing(Uri outputUri) {
         Uri inUri = inputUri;
         if (inUri == null) return;
 
+        maybeRequestNotificationPermission();
         setRunning(true);
         progressBar.setProgress(0);
         progressText.setText("0.0%");
         stageText.setText(detectedMode == WudEngine.MODE_WUX_TO_WUD ? "Descompactando" : "Compactando");
-        statusText.setText("Não feche o aplicativo durante o processamento.");
+        statusText.setText("Rodando em segundo plano. Pode minimizar ou remover o app dos recentes.");
 
-        boolean verify = verifySwitch.isChecked();
-        worker.execute(() -> {
-            int result = WudEngine.ERR_IO;
-            try (ParcelFileDescriptor inPfd = getContentResolver().openFileDescriptor(inUri, "r");
-                 ParcelFileDescriptor outPfd = getContentResolver().openFileDescriptor(outputUri, "rw")) {
-                if (inPfd != null && outPfd != null) {
-                    FileDescriptorRandomAccess input = FileDescriptorRandomAccess.forRead(inPfd.getFileDescriptor());
-                    FileDescriptorRandomAccess output = FileDescriptorRandomAccess.forReadWrite(outPfd.getFileDescriptor());
-                    result = WudEngine.process(input, output, verify, (stage, perMille) ->
-                            mainHandler.post(() -> updateProgress(stage, perMille)));
-                }
-            } catch (OutOfMemoryError e) {
-                result = WudEngine.ERR_MEMORY;
-            } catch (Throwable e) {
-                result = WudEngine.ERR_IO;
+        Intent service = new Intent(this, WudProcessService.class)
+                .setAction(WudProcessService.ACTION_START)
+                .putExtra(WudProcessService.EXTRA_INPUT_URI, inUri.toString())
+                .putExtra(WudProcessService.EXTRA_OUTPUT_URI, outputUri.toString())
+                .putExtra(WudProcessService.EXTRA_VERIFY, verifySwitch.isChecked());
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(service);
+            } else {
+                startService(service);
             }
-
-            if (result != WudEngine.OK) {
-                try {
-                    getContentResolver().delete(outputUri, null, null);
-                } catch (Exception ignored) {
-                }
-            }
-
-            int finalResult = result;
-            mainHandler.post(() -> finishProcessing(finalResult, verify));
-        });
-    }
-
-    private void updateProgress(WudEngine.Stage stage, int perMille) {
-        progressBar.setProgress(Math.max(0, Math.min(1000, perMille)));
-        progressText.setText(String.format(Locale.US, "%.1f%%", perMille / 10.0));
-        switch (stage) {
-            case COMPRESSING:
-                stageText.setText("Compactando WUD → WUX");
-                break;
-            case DECOMPRESSING:
-                stageText.setText("Descompactando WUX → WUD");
-                break;
-            case VERIFYING:
-                stageText.setText("Verificando byte por byte");
-                break;
-            case DONE:
-                stageText.setText("Concluído");
-                break;
-            default:
-                break;
+        } catch (Throwable e) {
+            setRunning(false);
+            stageText.setText("Falha");
+            statusText.setText("Não foi possível iniciar o processamento em segundo plano.");
+            toast("Falha ao iniciar serviço.");
         }
     }
 
-    private void finishProcessing(int result, boolean verify) {
-        setRunning(false);
+    private void maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
+        }
+    }
+
+    private void applyServiceState(
+            boolean isRunning,
+            int perMille,
+            String stage,
+            int result,
+            boolean verify,
+            boolean allowToast) {
+        setRunning(isRunning);
+        if (stage != null && !stage.isEmpty()) stageText.setText(stage);
+        int safe = Math.max(0, Math.min(1000, perMille));
+        progressBar.setProgress(safe);
+        progressText.setText(String.format(Locale.US, "%.1f%%", safe / 10.0));
+
+        if (isRunning) {
+            statusText.setText("Rodando em segundo plano. Pode usar outros apps normalmente.");
+            return;
+        }
+
+        if (result == WudProcessService.RESULT_NONE) return;
         if (result == WudEngine.OK) {
             progressBar.setProgress(1000);
             progressText.setText("100.0%");
@@ -207,11 +312,11 @@ public final class MainActivity extends Activity {
             statusText.setText(verify
                     ? "Conversão concluída e verificada sem diferenças."
                     : "Conversão concluída. Verificação desativada.");
-            toast("Concluído!");
+            if (allowToast) toast("Concluído!");
         } else {
             stageText.setText("Falha");
-            statusText.setText(errorMessage(result));
-            toast(errorMessage(result));
+            statusText.setText(WudProcessService.errorMessage(result));
+            if (allowToast) toast(WudProcessService.errorMessage(result));
         }
     }
 
@@ -220,30 +325,6 @@ public final class MainActivity extends Activity {
         selectInputButton.setEnabled(!value);
         startButton.setEnabled(!value && inputUri != null && detectedMode >= 0);
         verifySwitch.setEnabled(!value);
-        if (value) {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        } else {
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        }
-    }
-
-    private String errorMessage(int code) {
-        switch (code) {
-            case WudEngine.ERR_INPUT:
-                return "Falha ao abrir a imagem de entrada.";
-            case WudEngine.ERR_NOT_SEEKABLE:
-                return "O provedor não permite acesso aleatório. Mova o arquivo para o armazenamento local.";
-            case WudEngine.ERR_OUTPUT:
-                return "Falha ao preparar o arquivo de saída.";
-            case WudEngine.ERR_VERIFY:
-                return "A verificação encontrou diferenças; a saída foi removida.";
-            case WudEngine.ERR_MEMORY:
-                return "Memória insuficiente para compactar esta imagem.";
-            case WudEngine.ERR_FORMAT:
-                return "WUX inválido ou corrompido.";
-            default:
-                return "Erro de leitura/gravação (" + code + ").";
-        }
     }
 
     private String displayName(Uri uri) {
@@ -269,11 +350,5 @@ public final class MainActivity extends Activity {
 
     private void toast(String text) {
         Toast.makeText(this, text, Toast.LENGTH_LONG).show();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        worker.shutdownNow();
     }
 }
