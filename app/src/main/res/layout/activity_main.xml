@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#F4F6F8">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="WudCompress"
+            android:textColor="#15181C"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="WUD ⇄ WUX • Android nativo"
+            android:textColor="#626A73"
+            android:textSize="15sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:background="@drawable/panel"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <Button
+                android:id="@+id/selectInputButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Selecionar WUD / WUX" />
+
+            <TextView
+                android:id="@+id/inputNameText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:ellipsize="middle"
+                android:maxLines="2"
+                android:text="Nenhum arquivo selecionado"
+                android:textColor="#343A40"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/modeText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Modo: —"
+                android:textColor="#15181C"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <Switch
+                android:id="@+id/verifySwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:checked="true"
+                android:text="Verificar resultado no final" />
+
+            <Button
+                android:id="@+id/startButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:enabled="false"
+                android:text="Escolher destino e iniciar" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/panel"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:id="@+id/stageText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Pronto"
+                android:textColor="#343A40"
+                android:textSize="14sp" />
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:max="1000"
+                android:progress="0" />
+
+            <TextView
+                android:id="@+id/progressText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="0.0%"
+                android:textColor="#15181C"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Selecione uma imagem Wii U."
+                android:textColor="#626A73"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Compatível com o formato WUX0 usado pelo WudCompress v1.0. O processamento é feito em Java puro, sem NDK/JNI."
+            android:textColor="#777F88"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>
