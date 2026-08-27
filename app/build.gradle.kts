@@ -10,8 +10,8 @@ android {
         applicationId = "com.wudcompress.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0-java"
+        versionCode = 4
+        versionName = "2.2-mobile"
     }
 
     buildTypes {
