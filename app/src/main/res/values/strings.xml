@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">WudCompress</string>
+    <string name="app_name">WudCompressMobile</string>
+    <string name="about_title">Sobre o WudCompressMobile</string>
+    <string name="about_text">WudCompressMobile converte imagens Wii U entre WUD e WUX.\n\nCriador da versão mobile: Halleyplaybr\n\nBaseado no código-fonte do WudCompress v1.0 original, de Exzap.\n\nA versão mobile foi criada com assistência de IA, preservando a compatibilidade com o formato WUX0 e adaptando o funcionamento para Android.\n\nO núcleo mobile foi reimplementado em Java para Android e inclui verificação opcional do resultado e processamento em segundo plano.</string>
 </resources>
