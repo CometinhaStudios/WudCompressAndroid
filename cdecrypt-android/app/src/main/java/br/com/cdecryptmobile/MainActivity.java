@@ -1,9 +1,14 @@
 package br.com.cdecryptmobile;
 
+import android.Manifest;
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -11,234 +16,268 @@ import android.os.Environment;
 import android.os.StatFs;
 import android.provider.DocumentsContract;
 import android.provider.Settings;
+import android.content.ActivityNotFoundException;
 import android.view.View;
-import android.view.WindowManager;
+import android.content.res.Configuration;
 import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.File;
-import java.io.RandomAccessFile;
-import java.nio.charset.StandardCharsets;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static { System.loadLibrary("cdecrypt_jni"); }
-    private static final int REQ_TREE = 101;
-    private static final int REQ_PERMISSION = 102;
-    private TextView chosen, status, logText;
-    private Button extract;
-    private File gameFolder;
-    private volatile boolean busy = false;
+    private static final int PICK_SOURCE = 101;
+    private static final int PICK_DEST = 102;
+    private static final int REQ_NOTIFICATION = 103;
+    private static final int REQ_ACCESS = 104;
+    private TextView inputText, destText, statusText, stageText, percentText, reportText;
+    private ProgressBar progressBar;
+    private Button sourceButton, destButton, startButton, permissionButton, copyButton;
+    private File source, dest;
+    private boolean running;
+    private boolean registered;
+    private String lastReport = "";
 
-    private static native int nativeDecrypt(String input, String output, String logFile);
+    private final BroadcastReceiver receiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (!CDecryptService.ACTION_STATE.equals(intent.getAction())) return;
+            showState(intent.getBooleanExtra(CDecryptService.EXTRA_RUNNING, false),
+                    intent.getIntExtra(CDecryptService.EXTRA_PROGRESS, 0),
+                    intent.getStringExtra(CDecryptService.EXTRA_STAGE),
+                    intent.getIntExtra(CDecryptService.EXTRA_RESULT, CDecryptService.NO_RESULT),
+                    intent.getStringExtra(CDecryptService.EXTRA_REPORT),
+                    intent.getStringExtra(CDecryptService.EXTRA_OUTPUT));
+        }
+    };
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        LinearLayout main = new LinearLayout(this);
-        main.setOrientation(LinearLayout.VERTICAL);
-        main.setPadding(dp(20), dp(25), dp(20), dp(25));
-        main.setBackgroundColor(0xff101520);
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(main);
-        setContentView(scroll);
-        TextView title = text("CDecrypt Android", 25, Color.WHITE);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
-        main.addView(title);
-        main.addView(text("Wii U  •  Descriptografar .app / .h3   •   v0.2", 14, 0xffbac9df));
-        gap(main, 24);
-
-        Button permissions = button("1. Permitir acesso aos arquivos");
-        main.addView(permissions);
-        permissions.setOnClickListener(v -> askPermission());
-        gap(main, 8);
-
-        Button pick = button("2. Selecionar pasta do jogo");
-        main.addView(pick);
-        pick.setOnClickListener(v -> {
-            Intent it = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-            it.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            startActivityForResult(it, REQ_TREE);
+        setContentView(R.layout.activity_main);
+        sourceButton = findViewById(R.id.selectInputButton);
+        destButton = findViewById(R.id.selectOutputButton);
+        startButton = findViewById(R.id.startButton);
+        permissionButton = findViewById(R.id.permissionButton);
+        copyButton = findViewById(R.id.copyButton);
+        inputText = findViewById(R.id.inputNameText);
+        destText = findViewById(R.id.outputText);
+        statusText = findViewById(R.id.statusText);
+        stageText = findViewById(R.id.stageText);
+        percentText = findViewById(R.id.progressText);
+        reportText = findViewById(R.id.reportText);
+        progressBar = findViewById(R.id.progressBar);
+        progressBar.setMax(1000);
+        sourceButton.setOnClickListener(v -> chooseFolder(PICK_SOURCE));
+        destButton.setOnClickListener(v -> chooseFolder(PICK_DEST));
+        permissionButton.setOnClickListener(v -> requestFilePermission());
+        startButton.setOnClickListener(v -> startExtraction());
+        copyButton.setOnClickListener(v -> {
+            if (lastReport == null || lastReport.isEmpty()) {
+                Toast.makeText(this, "Ainda não há relatório.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            ClipboardManager clipboard = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+            clipboard.setPrimaryClip(ClipData.newPlainText("CDecrypt log", lastReport));
+            Toast.makeText(this, "Relatório copiado", Toast.LENGTH_SHORT).show();
         });
-        gap(main, 12);
-        chosen = text("Nenhuma pasta selecionada", 13, 0xffbac9df);
-        main.addView(chosen);
-        gap(main, 18);
 
-        extract = button("3. Descriptografar e extrair");
-        main.addView(extract);
-        extract.setOnClickListener(v -> decrypt());
-        gap(main, 15);
-        status = text("Selecione uma pasta com title.tik, title.tmd e arquivos .app.", 14, Color.WHITE);
-        main.addView(status);
-        gap(main, 12);
-        Button copyLog = button("Copiar relatório do erro");
-        main.addView(copyLog);
-        copyLog.setOnClickListener(v -> {
-            String report = logText.getText().toString();
-            ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(
-                    ClipData.newPlainText("CDecrypt Android report", report));
-            Toast.makeText(this, "Relatório copiado!", Toast.LENGTH_SHORT).show();
+        android.content.SharedPreferences prefs = getSharedPreferences("folders", MODE_PRIVATE);
+        String in = prefs.getString("source", null);
+        String out = prefs.getString("dest", null);
+        if (in != null) source = new File(in);
+        if (out != null) dest = new File(out);
+        updateFolders();
+        applyInsets();
+        updateSnapshot();
+    }
+
+    @Override public void onStart() {
+        super.onStart();
+        if (!registered) {
+            IntentFilter filter = new IntentFilter(CDecryptService.ACTION_STATE);
+            if (Build.VERSION.SDK_INT >= 33)
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            else registerReceiver(receiver, filter);
+            registered = true;
+        }
+        updateSnapshot();
+    }
+
+    @Override public void onStop() {
+        if (registered) {
+            unregisterReceiver(receiver);
+            registered = false;
+        }
+        super.onStop();
+    }
+
+    private void applyInsets() {
+        View root = findViewById(R.id.rootScroll);
+        int l = root.getPaddingLeft(), t = root.getPaddingTop();
+        int r = root.getPaddingRight(), b = root.getPaddingBottom();
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            v.setPadding(l + insets.getSystemWindowInsetLeft(),
+                    t + insets.getSystemWindowInsetTop(),
+                    r + insets.getSystemWindowInsetRight(),
+                    b + insets.getSystemWindowInsetBottom());
+            return insets;
         });
-        gap(main, 10);
-        logText = text("O relatório detalhado aparecerá aqui após a tentativa de extração.", 13, 0xffa8c3de);
-        logText.setTextIsSelectable(true);
-        main.addView(logText);
-        gap(main, 20);
-        main.addView(text("Os arquivos originais não serão apagados. A saída será salva na pasta CDecrypt_Extraido dentro da pasta selecionada. Mantenha o aplicativo aberto durante a extração.", 13, 0xff9ba9bd));
-        gap(main, 20);
-        main.addView(text("Código nativo: CDecrypt (VitaSmith/crediar), GPLv3. Projeto experimental.", 11, 0xff95a7c2));
+        root.requestApplyInsets();
+        boolean dark = (getResources().getConfiguration().uiMode &
+                Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        int flags = getWindow().getDecorView().getSystemUiVisibility();
+        if (dark) flags &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        else flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        getWindow().getDecorView().setSystemUiVisibility(flags);
     }
 
-    private TextView text(String s, int size, int color) {
-        TextView v = new TextView(this);
-        v.setText(s);
-        v.setTextSize(size);
-        v.setTextColor(color);
-        return v;
+    private void updateSnapshot() {
+        CDecryptService.Snapshot s = CDecryptService.snapshot(this);
+        showState(s.running, s.progress, s.stage, s.result, s.report, s.output);
     }
-    private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        return b;
+
+    private void showState(boolean active, int progress, String stage, int result, String report, String output) {
+        running = active;
+        sourceButton.setEnabled(!running);
+        destButton.setEnabled(!running);
+        permissionButton.setEnabled(!running);
+        startButton.setEnabled(!running && source != null && dest != null && hasAccess());
+        progressBar.setProgress(Math.max(0, Math.min(1000, progress)));
+        percentText.setText(String.format(Locale.US, "%.1f%%", Math.max(0, Math.min(1000, progress)) / 10.0));
+        if (stage != null) stageText.setText(stage);
+        if (running) statusText.setText("Extraindo em segundo plano. Pode minimizar o aplicativo ou desligar a tela.");
+        else if (result == 0) statusText.setText("Extração concluída! Arquivos em: " + output);
+        else if (result != CDecryptService.NO_RESULT) statusText.setText("Falha na extração (código " + result + "). Copie o relatório para identificar a causa.");
+        else statusText.setText(hasAccess() ? "Selecione as pastas de origem e destino." :
+                "Primeiro conceda acesso aos arquivos.");
+        lastReport = report == null ? "" : report;
+        reportText.setText(lastReport.isEmpty() ? "Os detalhes aparecerão aqui após a extração." : lastReport);
+        copyButton.setEnabled(!lastReport.isEmpty());
     }
-    private int dp(int px) { return Math.round(px * getResources().getDisplayMetrics().density); }
-    private void gap(LinearLayout layout, int h) {
-        layout.addView(new View(this), new LinearLayout.LayoutParams(1, dp(h)));
-    }
-    private boolean canReadFiles() {
-        return Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager();
-    }
-    private void askPermission() {
-        if (canReadFiles()) {
-            Toast.makeText(this, "Permissão já autorizada", Toast.LENGTH_SHORT).show();
+
+    private boolean hasAccess() { return Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager(); }
+
+    private void requestFilePermission() {
+        if (hasAccess()) {
+            Toast.makeText(this, "Acesso já autorizado.", Toast.LENGTH_SHORT).show();
+            updateSnapshot();
             return;
         }
         try {
-            Intent it = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    Uri.parse("package:" + getPackageName()));
-            startActivityForResult(it, REQ_PERMISSION);
+            startActivityForResult(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName())), REQ_ACCESS);
         } catch (ActivityNotFoundException ex) {
-            startActivityForResult(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), REQ_PERMISSION);
+            startActivityForResult(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), REQ_ACCESS);
         }
     }
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+    private void chooseFolder(int type) {
+        if (running) return;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, type);
+    }
+
+    @Override @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_PERMISSION) {
-            status.setText(canReadFiles() ? "Permissão concedida." : "Permissão ainda não concedida.");
-            return;
-        }
-        if (requestCode != REQ_TREE || resultCode != RESULT_OK || data == null) return;
-        File folder = resolveFolder(data.getData());
+        if (requestCode == REQ_ACCESS) { updateSnapshot(); return; }
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        File folder = resolveDocumentTree(data.getData());
         if (folder == null || !folder.isDirectory()) {
-            gameFolder = null;
-            chosen.setText("Pasta não acessível. Selecione um diretório na memória interna.");
+            Toast.makeText(this, "Escolha uma pasta local da memória interna ou cartão SD.", Toast.LENGTH_LONG).show();
             return;
         }
-        gameFolder = folder;
-        chosen.setText("Pasta: " + folder.getAbsolutePath());
-        status.setText(filesPresent(folder)
-                ? "title.tmd e title.tik encontrados. " + countAppFiles(folder)
-                     + " arquivos .app detectados. Pronto para tentar a extração."
-                : "Atenção: title.tmd ou title.tik está ausente desta pasta.");
+        if (requestCode == PICK_SOURCE) {
+            source = folder;
+            if (!new File(folder, "title.tmd").isFile() || !new File(folder, "title.tik").isFile()) {
+                Toast.makeText(this, "A pasta selecionada não tem title.tmd e title.tik.", Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == PICK_DEST) {
+            dest = folder;
+        }
+        getSharedPreferences("folders", MODE_PRIVATE).edit()
+                .putString("source", source == null ? null : source.getAbsolutePath())
+                .putString("dest", dest == null ? null : dest.getAbsolutePath()).apply();
+        updateFolders();
+        updateSnapshot();
     }
-    private File resolveFolder(Uri uri) {
-        if (uri == null) return null;
+
+    private void updateFolders() {
+        inputText.setText(source == null ? "Nenhuma pasta selecionada" : source.getAbsolutePath());
+        destText.setText(dest == null ? "Nenhuma pasta selecionada" : dest.getAbsolutePath());
+    }
+
+    private File resolveDocumentTree(Uri uri) {
         try {
             if (!"com.android.externalstorage.documents".equals(uri.getAuthority())) return null;
             String id = DocumentsContract.getTreeDocumentId(uri);
-            int index = id.indexOf(':');
-            if (index < 0) return null;
-            String volume = id.substring(0, index);
-            String relative = id.substring(index + 1);
+            int colon = id.indexOf(':');
+            if (colon < 0) return null;
+            String volume = id.substring(0, colon);
+            String relative = id.substring(colon + 1);
             if (relative.startsWith("/") || relative.contains("..") || relative.contains("\\")) return null;
-            File base = "primary".equalsIgnoreCase(volume)
-                    ? Environment.getExternalStorageDirectory() : new File("/storage", volume);
-            File canonicalBase = base.getCanonicalFile();
-            File folder = new File(base, relative).getCanonicalFile();
-            if (!folder.equals(canonicalBase) && !folder.getPath().startsWith(canonicalBase.getPath() + "/")) return null;
-            return folder;
+            File root = volume.equalsIgnoreCase("primary") ? Environment.getExternalStorageDirectory()
+                    : new File("/storage", volume);
+            File parent = root.getCanonicalFile();
+            File resolved = new File(root, relative).getCanonicalFile();
+            if (!resolved.equals(parent) && !resolved.getPath().startsWith(parent.getPath() + "/")) return null;
+            return resolved;
         } catch (Exception ex) { return null; }
     }
-    private boolean filesPresent(File directory) {
-        return new File(directory, "title.tmd").isFile() && new File(directory, "title.tik").isFile();
-    }
-    private int countAppFiles(File directory) {
-        File[] files = directory.listFiles();
-        if (files == null) return 0;
-        int count = 0;
-        for (File f : files) if (f.isFile() && f.getName().toLowerCase(Locale.ROOT).endsWith(".app")) count++;
-        return count;
+
+    private void startExtraction() {
+        if (running) return;
+        if (!hasAccess()) { requestFilePermission(); return; }
+        if (source == null || dest == null || !source.isDirectory() || !dest.isDirectory()) {
+            statusText.setText("Selecione uma origem e uma pasta de destino válidas.");
+            return;
+        }
+        if (!new File(source, "title.tmd").isFile() || !new File(source, "title.tik").isFile()) {
+            statusText.setText("A pasta de origem precisa conter title.tmd e title.tik.");
+            return;
+        }
+        try {
+            long free = new StatFs(dest.getAbsolutePath()).getAvailableBytes();
+            if (free < 512L * 1024 * 1024) {
+                statusText.setText("Pouco espaço livre no destino (menos de 512 MB).");
+                return;
+            }
+        } catch (Exception ex) {
+            statusText.setText("Não foi possível consultar o espaço livre do destino.");
+            return;
+        }
+
+        String base = source.getName().replaceAll("[^a-zA-Z0-9_-]", "_");
+        if (base.length() > 36) base = base.substring(0, 36);
+        if (base.isEmpty()) base = "WiiU";
+        File target = new File(dest, "CDecrypt_" + base);
+        for (int n = 2; target.exists() && n < 1000; n++) target = new File(dest, "CDecrypt_" + base + "_" + n);
+        if (target.exists()) {
+            statusText.setText("Não foi possível criar outra pasta de saída.");
+            return;
+        }
+        maybeRequestNotificationPermission();
+        Intent task = new Intent(this, CDecryptService.class)
+                .setAction(CDecryptService.ACTION_START)
+                .putExtra(CDecryptService.EXTRA_SOURCE, source.getAbsolutePath())
+                .putExtra(CDecryptService.EXTRA_DEST, target.getAbsolutePath());
+        startButton.setEnabled(false);
+        statusText.setText("Preparando extração em segundo plano...");
+        try {
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(task);
+            else startService(task);
+        } catch (Throwable e) {
+            startButton.setEnabled(true);
+            statusText.setText("Não foi possível iniciar o serviço: " + e.getMessage());
+        }
     }
 
-    private String readReport(File log) {
-        if (!log.isFile()) return "Log não foi criado. Confira a permissão e tente novamente.";
-        try (RandomAccessFile raf = new RandomAccessFile(log, "r")) {
-            long length = raf.length();
-            if (length == 0) return "Log vazio: o processo terminou sem mensagem.";
-            int size = (int) Math.min(length, 12000);
-            raf.seek(length - size);
-            byte[] raw = new byte[size];
-            raf.readFully(raw);
-            return (length > size ? "[Últimos 12 KB do relatório]\n" : "")
-                    + new String(raw, StandardCharsets.UTF_8);
-        } catch (Exception ex) {
-            return "Falha ao ler relatório: " + ex.getMessage();
+    private void maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATION);
         }
-    }
-    private void decrypt() {
-        if (busy) return;
-        if (!canReadFiles()) {
-            status.setText("Primeiro autorize o acesso aos arquivos.");
-            askPermission();
-            return;
-        }
-        if (gameFolder == null || !filesPresent(gameFolder)) {
-            status.setText("Selecione uma pasta com title.tmd e title.tik.");
-            return;
-        }
-        final File folder = gameFolder;
-        final File output = new File(folder, "CDecrypt_Extraido");
-        if (output.exists() && (!output.isDirectory()
-                || output.list() == null || output.list().length > 0)) {
-            status.setText("Já existe uma pasta de saída com arquivos. Para não sobrescrever seus dados, renomeie CDecrypt_Extraido antes de tentar novamente.");
-            return;
-        }
-        long available = new StatFs(folder.getAbsolutePath()).getAvailableBytes();
-        if (available < 1024L * 1024 * 1024) {
-            status.setText("Menos de 1 GB livre. Libere espaço antes da extração.");
-            return;
-        }
-        if (!output.exists() && !output.mkdirs()) {
-            status.setText("Não consegui criar a pasta de saída.");
-            return;
-        }
-        busy = true;
-        extract.setEnabled(false);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        status.setText(String.format(Locale.ROOT, "Extraindo... %.1f GB livres. Não feche o app.", available / 1073741824.0));
-        logText.setText("Aguarde o resultado...");
-        final File report = new File(getFilesDir(), "cdecrypt_last_report.txt");
-        new Thread(() -> {
-            int result;
-            String failure = "";
-            try { result = nativeDecrypt(folder.getAbsolutePath(), output.getAbsolutePath(), report.getAbsolutePath()); }
-            catch (Throwable error) { result = -100; failure = error.toString(); }
-            final int rc = result;
-            final String finalReport = readReport(report) + (failure.isEmpty() ? "" : "\nAndroid: " + failure);
-            runOnUiThread(() -> {
-                busy = false;
-                extract.setEnabled(true);
-                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                status.setText(rc == 0 ?
-                    "Extração concluída! Confira CDecrypt_Extraido e adicione o jogo no Cemu." :
-                    "Erro de extração, código " + rc + ". O relatório detalhado está logo abaixo. Toque em Copiar relatório para compartilhar o erro.");
-                logText.setText(finalReport);
-            });
-        }, "cdecrypt-worker").start();
     }
 }
