@@ -19,18 +19,22 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.File;
+import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
     static { System.loadLibrary("cdecrypt_jni"); }
     private static final int REQ_TREE = 101;
     private static final int REQ_PERMISSION = 102;
-    private TextView chosen, status;
+    private TextView chosen, status, logText;
     private Button extract;
     private File gameFolder;
     private volatile boolean busy = false;
 
-    private static native int nativeDecrypt(String input, String output);
+    private static native int nativeDecrypt(String input, String output, String logFile);
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -44,7 +48,7 @@ public final class MainActivity extends Activity {
         TextView title = text("CDecrypt Android", 25, Color.WHITE);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         main.addView(title);
-        main.addView(text("Wii U  •  Descriptografar .app / .h3", 14, 0xffbac9df));
+        main.addView(text("Wii U  •  Descriptografar .app / .h3   •   v0.2", 14, 0xffbac9df));
         gap(main, 24);
 
         Button permissions = button("1. Permitir acesso aos arquivos");
@@ -70,6 +74,19 @@ public final class MainActivity extends Activity {
         gap(main, 15);
         status = text("Selecione uma pasta com title.tik, title.tmd e arquivos .app.", 14, Color.WHITE);
         main.addView(status);
+        gap(main, 12);
+        Button copyLog = button("Copiar relatório do erro");
+        main.addView(copyLog);
+        copyLog.setOnClickListener(v -> {
+            String report = logText.getText().toString();
+            ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(
+                    ClipData.newPlainText("CDecrypt Android report", report));
+            Toast.makeText(this, "Relatório copiado!", Toast.LENGTH_SHORT).show();
+        });
+        gap(main, 10);
+        logText = text("O relatório detalhado aparecerá aqui após a tentativa de extração.", 13, 0xffa8c3de);
+        logText.setTextIsSelectable(true);
+        main.addView(logText);
         gap(main, 20);
         main.addView(text("Os arquivos originais não serão apagados. A saída será salva na pasta CDecrypt_Extraido dentro da pasta selecionada. Mantenha o aplicativo aberto durante a extração.", 13, 0xff9ba9bd));
         gap(main, 20);
@@ -125,7 +142,8 @@ public final class MainActivity extends Activity {
         gameFolder = folder;
         chosen.setText("Pasta: " + folder.getAbsolutePath());
         status.setText(filesPresent(folder)
-                ? "Arquivos principais encontrados. Pronto para extrair."
+                ? "title.tmd e title.tik encontrados. " + countAppFiles(folder)
+                     + " arquivos .app detectados. Pronto para tentar a extração."
                 : "Atenção: title.tmd ou title.tik está ausente desta pasta.");
     }
     private File resolveFolder(Uri uri) {
@@ -149,6 +167,29 @@ public final class MainActivity extends Activity {
     private boolean filesPresent(File directory) {
         return new File(directory, "title.tmd").isFile() && new File(directory, "title.tik").isFile();
     }
+    private int countAppFiles(File directory) {
+        File[] files = directory.listFiles();
+        if (files == null) return 0;
+        int count = 0;
+        for (File f : files) if (f.isFile() && f.getName().toLowerCase(Locale.ROOT).endsWith(".app")) count++;
+        return count;
+    }
+
+    private String readReport(File log) {
+        if (!log.isFile()) return "Log não foi criado. Confira a permissão e tente novamente.";
+        try (RandomAccessFile raf = new RandomAccessFile(log, "r")) {
+            long length = raf.length();
+            if (length == 0) return "Log vazio: o processo terminou sem mensagem.";
+            int size = (int) Math.min(length, 12000);
+            raf.seek(length - size);
+            byte[] raw = new byte[size];
+            raf.readFully(raw);
+            return (length > size ? "[Últimos 12 KB do relatório]\n" : "")
+                    + new String(raw, StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            return "Falha ao ler relatório: " + ex.getMessage();
+        }
+    }
     private void decrypt() {
         if (busy) return;
         if (!canReadFiles()) {
@@ -162,8 +203,9 @@ public final class MainActivity extends Activity {
         }
         final File folder = gameFolder;
         final File output = new File(folder, "CDecrypt_Extraido");
-        if (output.exists()) {
-            status.setText("CDecrypt_Extraido já existe. Renomeie a pasta existente para evitar sobrescrita.");
+        if (output.exists() && (!output.isDirectory()
+                || output.list() == null || output.list().length > 0)) {
+            status.setText("Já existe uma pasta de saída com arquivos. Para não sobrescrever seus dados, renomeie CDecrypt_Extraido antes de tentar novamente.");
             return;
         }
         long available = new StatFs(folder.getAbsolutePath()).getAvailableBytes();
@@ -171,7 +213,7 @@ public final class MainActivity extends Activity {
             status.setText("Menos de 1 GB livre. Libere espaço antes da extração.");
             return;
         }
-        if (!output.mkdirs()) {
+        if (!output.exists() && !output.mkdirs()) {
             status.setText("Não consegui criar a pasta de saída.");
             return;
         }
@@ -179,18 +221,23 @@ public final class MainActivity extends Activity {
         extract.setEnabled(false);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         status.setText(String.format(Locale.ROOT, "Extraindo... %.1f GB livres. Não feche o app.", available / 1073741824.0));
+        logText.setText("Aguarde o resultado...");
+        final File report = new File(getFilesDir(), "cdecrypt_last_report.txt");
         new Thread(() -> {
             int result;
-            try { result = nativeDecrypt(folder.getAbsolutePath(), output.getAbsolutePath()); }
-            catch (Throwable error) { result = -100; }
+            String failure = "";
+            try { result = nativeDecrypt(folder.getAbsolutePath(), output.getAbsolutePath(), report.getAbsolutePath()); }
+            catch (Throwable error) { result = -100; failure = error.toString(); }
             final int rc = result;
+            final String finalReport = readReport(report) + (failure.isEmpty() ? "" : "\nAndroid: " + failure);
             runOnUiThread(() -> {
                 busy = false;
                 extract.setEnabled(true);
                 getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 status.setText(rc == 0 ?
-                    "Extração concluída! Confira a pasta CDecrypt_Extraido e adicione o jogo no Cemu." :
-                    "Erro de extração: código " + rc + ". Confira integridade dos arquivos, ticket e espaço livre. Logs: CDecrypt.");
+                    "Extração concluída! Confira CDecrypt_Extraido e adicione o jogo no Cemu." :
+                    "Erro de extração, código " + rc + ". O relatório detalhado está logo abaixo. Toque em Copiar relatório para compartilhar o erro.");
+                logText.setText(finalReport);
             });
         }, "cdecrypt-worker").start();
     }
