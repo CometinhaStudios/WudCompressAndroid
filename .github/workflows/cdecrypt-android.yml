@@ -1,0 +1,33 @@
+name: CDecrypt Android APK
+on:
+  push:
+    branches: [cdecrypt-android-build]
+    paths:
+      - 'cdecrypt-android/**'
+      - '.github/workflows/cdecrypt-android.yml'
+  workflow_dispatch:
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cdecrypt-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK components
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'cmake;3.22.1' 'ndk;26.3.11579264'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: CDecrypt-Android-debug-APK
+          path: cdecrypt-android/app/build/outputs/apk/debug/app-debug.apk
