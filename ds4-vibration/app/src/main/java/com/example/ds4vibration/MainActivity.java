@@ -8,17 +8,26 @@ import android.view.InputDevice;
 import android.widget.*;
 import android.graphics.Color;
 public class MainActivity extends Activity {
- TextView status; Button toggle; SeekBar strength; boolean running=false; Vibrator motor; android.os.Handler handler=new android.os.Handler();
+ TextView status,level,durationLabel; Button toggle; SeekBar strength,duration; boolean running=false; Vibrator motor; android.os.Handler handler=new android.os.Handler();
  final Runnable stopTask=()->stop();
- @Override public void onCreate(Bundle b){super.onCreate(b); LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(36,64,36,30);l.setBackgroundColor(Color.rgb(20,23,32));
- TextView title=new TextView(this);title.setText("DS4 Vibration Control");title.setTextSize(26);title.setTextColor(-1);l.addView(title);
+ @Override public void onCreate(Bundle b){super.onCreate(b);
+ LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(36,56,36,24);l.setBackgroundColor(Color.rgb(20,23,32));
+ TextView title=new TextView(this);title.setText("DS4 Vibration Control");title.setTextSize(25);title.setTextColor(-1);l.addView(title);
  status=new TextView(this);status.setTextColor(-1);status.setTextSize(16);l.addView(status);
- strength=new SeekBar(this);strength.setMax(255);strength.setProgress(160);l.addView(strength);
+ level=new TextView(this);level.setTextColor(-1);l.addView(level);
+ strength=new SeekBar(this);strength.setMax(254);strength.setProgress(159);l.addView(strength);
+ durationLabel=new TextView(this);durationLabel.setTextColor(-1);l.addView(durationLabel);
+ duration=new SeekBar(this);duration.setMax(55);duration.setProgress(25);l.addView(duration);
+ strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int p,boolean u){level.setText("Força: "+Math.round((p+1)*100f/255)+"%");if(u&&running)apply();}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}});
+ duration.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int p,boolean u){durationLabel.setText("Duração máxima: "+(p+5)+" segundos");if(u&&running)scheduleStop();}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}});
+ level.setText("Força: 63%");durationLabel.setText("Duração máxima: 30 segundos");
  toggle=new Button(this);toggle.setText("LIGAR VIBRAÇÃO");l.addView(toggle);toggle.setOnClickListener(v->{if(running)stop();else start();});
  Button refresh=new Button(this);refresh.setText("PROCURAR CONTROLE");l.addView(refresh);refresh.setOnClickListener(v->scan());
- TextView note=new TextView(this);note.setText("Teste de até 30 segundos. Depende do suporte do Android à vibração do controle. Não vibra o celular.");note.setTextColor(Color.LTGRAY);l.addView(note);setContentView(l);scan(); }
- void scan(){motor=null;InputManager im=(InputManager)getSystemService(INPUT_SERVICE);for(int id:im.getInputDeviceIds()){InputDevice d=im.getInputDevice(id);if(d!=null && (d.getSources()&InputDevice.SOURCE_GAMEPAD)==InputDevice.SOURCE_GAMEPAD){Vibrator v=d.getVibrator();if(v!=null && v.hasVibrator()){motor=v;status.setText("Controle detectado: "+d.getName());return;}}}status.setText("Nenhum controle com vibração acessível.");}
- void start(){scan();if(motor==null)return;int amp=Math.max(1,strength.getProgress());try{motor.vibrate(VibrationEffect.createWaveform(new long[]{0,500,100},new int[]{0,amp,0},0));running=true;toggle.setText("DESLIGAR VIBRAÇÃO");handler.postDelayed(stopTask,30000);}catch(Exception e){status.setText("Vibração indisponível: "+e.getMessage());}}
+ TextView note=new TextView(this);note.setText("Vibração sem pausas programadas. O Android pode limitar a força ou não reconhecer os motores. Desliga ao sair do aplicativo.");note.setTextColor(Color.LTGRAY);l.addView(note);setContentView(l);scan();}
+ void scan(){if(running)return;motor=null;InputManager im=(InputManager)getSystemService(INPUT_SERVICE);for(int id:im.getInputDeviceIds()){InputDevice d=im.getInputDevice(id);if(d!=null&&(d.getSources()&InputDevice.SOURCE_GAMEPAD)==InputDevice.SOURCE_GAMEPAD){Vibrator v=d.getVibrator();if(v!=null&&v.hasVibrator()){motor=v;status.setText("Controle: "+d.getName());return;}}}status.setText("Nenhum controle com vibração acessível.");}
+ void apply(){if(motor==null)return;try{int amp=Math.max(1,strength.getProgress()+1);motor.vibrate(VibrationEffect.createWaveform(new long[]{0,1000},new int[]{0,amp},1));}catch(Exception e){stop();status.setText("Vibração indisponível: "+e.getMessage());}}
+ void scheduleStop(){handler.removeCallbacks(stopTask);handler.postDelayed(stopTask,(duration.getProgress()+5)*1000L);}
+ void start(){scan();if(motor==null)return;running=true;toggle.setText("DESLIGAR VIBRAÇÃO");apply();if(running)scheduleStop();}
  void stop(){handler.removeCallbacks(stopTask);if(motor!=null)motor.cancel();running=false;if(toggle!=null)toggle.setText("LIGAR VIBRAÇÃO");}
  @Override protected void onPause(){super.onPause();stop();}
  @Override protected void onDestroy(){stop();super.onDestroy();}
