@@ -1,0 +1,36 @@
+name: Arnis Android ARM64 engine (experimental)
+on:
+  workflow_dispatch:
+  push:
+    branches: [arnis-android-port]
+    paths:
+      - '.github/workflows/arnis-android.yml'
+jobs:
+  android-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+      - name: Download upstream Arnis v3.3.0
+        run: |
+          curl -fL --retry 3 https://github.com/louis-e/arnis/archive/refs/tags/v3.3.0.tar.gz -o arnis.tar.gz
+          mkdir arnis-src
+          tar -xzf arnis.tar.gz -C arnis-src --strip-components=1
+      - name: Install Rust Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Compile CLI engine (no desktop GUI)
+        working-directory: arnis-src
+        env:
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: aarch64-linux-android35-clang
+        run: |
+          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cargo build --locked --release --target aarch64-linux-android --no-default-features
+      - name: Upload native engine
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arnis-3.3.0-android-arm64-engine
+          path: arnis-src/target/aarch64-linux-android/release/arnis
