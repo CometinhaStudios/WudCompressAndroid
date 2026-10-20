@@ -21,7 +21,7 @@ public class MainActivity extends Activity {
  String bin=getApplicationInfo().nativeLibraryDir+"/libarnis.so";
  java.util.ArrayList<String> args=new java.util.ArrayList<>();args.add(bin);args.add("--bbox");args.add(bb);args.add("--output-dir");args.add(out.getAbsolutePath());args.add("--mode");args.add("geo-only");args.add("--overture");args.add("false");args.add("--canopy-height");args.add("false");
  if(format.getSelectedItemPosition()==0)args.add("--bedrock");
- ProcessBuilder pb=new ProcessBuilder(args);pb.redirectErrorStream(true);pb.directory(getFilesDir());Process p=pb.start();
+ ProcessBuilder pb=new ProcessBuilder(args);pb.redirectErrorStream(true);pb.directory(getFilesDir());java.lang.Process p=pb.start();
  try(BufferedReader r=new BufferedReader(new InputStreamReader(p.getInputStream()))){String line;while((line=r.readLine())!=null){final String msg=line;runOnUiThread(()->log.append(msg+"\n"));}}
  int code=p.waitFor();runOnUiThread(()->{log.append("Finalizado: codigo "+code+"\nSaida: "+out);run.setEnabled(true);});
  }catch(Exception e){runOnUiThread(()->{log.append("Erro: "+e.toString());run.setEnabled(true);});}}).start();
