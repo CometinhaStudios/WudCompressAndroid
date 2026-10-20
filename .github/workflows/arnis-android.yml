@@ -26,12 +26,25 @@ jobs:
           curl -fL --retry 3 https://github.com/louis-e/arnis/archive/refs/tags/v3.3.0.tar.gz -o arnis.tar.gz
           mkdir arnis-src
           tar -xzf arnis.tar.gz -C arnis-src --strip-components=1
+      - name: Use bundled WebPKI roots on Android
+        working-directory: arnis-src
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("Cargo.toml")
+          s=p.read_text()
+          old='reqwest = { version = "0.13.1", features = ["blocking", "json", "query", "gzip"] }'
+          new='reqwest = { version = "0.13.1", default-features = false, features = ["blocking", "json", "query", "gzip", "rustls-tls-webpki-roots"] }'
+          assert old in s, "reqwest dependency not found"
+          p.write_text(s.replace(old,new))
+          PY
+          cargo update -p reqwest --precise 0.13.3 || cargo update -p reqwest
       - name: Build Android ARM64 native engine
         working-directory: arnis-src
         run: |
           export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=aarch64-linux-android35-clang
-          cargo build --locked --release --target aarch64-linux-android --no-default-features
+          cargo build --release --target aarch64-linux-android --no-default-features
       - name: Package executable as extractable native library
         run: |
           mkdir -p arnis-android/app/src/main/jniLibs/arm64-v8a
