@@ -1,11 +1,19 @@
 package com.cometinhastudios.arnis;
-import android.app.*;import android.os.*;import android.view.*;import android.widget.*;import java.io.*;
+import android.app.*;import android.os.*;import android.view.*;import android.widget.*;import java.io.*;import android.webkit.*;
 public class MainActivity extends Activity {
- EditText bbox; TextView log; Spinner format; Button run;
+ EditText bbox; TextView log; Spinner format; Button run; WebView map; EditText search;
  public void onCreate(Bundle b){super.onCreate(b);
  LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(24,24,24,24);
  TextView title=new TextView(this);title.setText("Arnis Android 0.1 (experimental)");title.setTextSize(22);l.addView(title);
- TextView help=new TextView(this);help.setText("Coordenadas: min_lat,min_lon,max_lat,max_lon. Comece com uma area pequena.");l.addView(help);
+ search=new EditText(this);search.setSingleLine(true);search.setHint("Buscar cidade ou endereco");l.addView(search);
+ Button find=new Button(this);find.setText("Buscar no mapa");l.addView(find);
+ map=new WebView(this);map.getSettings().setJavaScriptEnabled(true);map.getSettings().setDomStorageEnabled(true);map.addJavascriptInterface(new Object(){@JavascriptInterface public void onBounds(String b){runOnUiThread(()->bbox.setText(b));}},"Android");
+ l.addView(map,new LinearLayout.LayoutParams(-1,(int)(getResources().getDisplayMetrics().heightPixels*.43)));
+ map.loadUrl("file:///android_asset/map.html");
+ find.setOnClickListener(v->map.evaluateJavascript("search("+org.json.JSONObject.quote(search.getText().toString())+")",null));
+ Button select=new Button(this);select.setText("Selecionar area no mapa");l.addView(select);
+ select.setOnClickListener(v->map.evaluateJavascript("selectArea()",null));
+ TextView help=new TextView(this);help.setText("Area selecionada (coordenadas automaticas):");l.addView(help);
  bbox=new EditText(this);bbox.setSingleLine(true);bbox.setText("-1.1970,-47.1820,-1.1965,-47.1815");l.addView(bbox);
  format=new Spinner(this);format.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Bedrock (.mcworld)","Java (pasta)"}));l.addView(format);
  run=new Button(this);run.setText("Gerar mundo");l.addView(run);
