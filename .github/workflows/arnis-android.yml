@@ -34,7 +34,7 @@ jobs:
           p=Path("Cargo.toml")
           s=p.read_text()
           old='reqwest = { version = "0.13.1", features = ["blocking", "json", "query", "gzip"] }'
-          new='reqwest = { version = "0.13.1", default-features = false, features = ["blocking", "json", "query", "gzip", "rustls-tls-webpki-roots"] }'
+          new='reqwest = { version = "0.13.1", default-features = false, features = ["blocking", "json", "query", "gzip", "rustls", "webpki-roots"] }'
           assert old in s, "reqwest dependency not found"
           p.write_text(s.replace(old,new))
           PY
