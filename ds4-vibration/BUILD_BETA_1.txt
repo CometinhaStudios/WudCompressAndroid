@@ -1,0 +1,2 @@
+Build Beta 1 disparada pelo GitHub Actions.
+Projeto: DS4 Vibration Control.
