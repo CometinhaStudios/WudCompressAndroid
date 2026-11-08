@@ -1,0 +1,13 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'br.com.cometinha.controlenopc'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'br.com.cometinha.controlenopc'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName 'Beta 1'
+    }
+}
