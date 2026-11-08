@@ -1,0 +1,32 @@
+name: Build Controle no PC Android Beta 1
+on:
+  push:
+    branches: [ds4-vibration-control]
+    paths:
+      - 'controle-no-pc-android/**'
+      - '.github/workflows/controle-no-pc-android.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: controle-no-pc-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set Android SDK
+        run: echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build Beta 1 APK
+        run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ControleNoPC-Beta1-APK
+          path: controle-no-pc-android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
